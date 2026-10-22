@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4efe5">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="文库">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="description" content="无需登录的轻小说文库网页阅读器，支持整本下载、本地搜索与断网离线阅读。">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" href="/icons/icon-192.png" sizes="192x192">
+  <link rel="stylesheet" href="/styles.css">
+  <title>轻小说文库</title>
+</head>
+<body>
+  <div id="app" aria-live="polite"></div>
+  <div id="toast" class="toast" role="status"></div>
+  <div id="sheet-root"></div>
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="lightbox-close" type="button" data-action="close-lightbox" aria-label="关闭">关闭</button>
+    <img id="lightbox-img" alt="">
+  </div>
+  <script src="/js/core.js" defer></script>
+  <script src="/js/offline.js" defer></script>
+  <script src="/js/ui.js" defer></script>
+  <script src="/js/pages.js" defer></script>
+  <script src="/js/reader.js" defer></script>
+  <script src="/js/main.js" defer></script>
+</body>
+</html>
