@@ -10,6 +10,8 @@
 - 阅读设置：纸张 / 泛黄 / 夜间 / 黑色主题，宋体 / 黑体 / 楷体，字号与行距
 - 书架：网格 / 列表视图、继续阅读、移出书架
 - 离线下载：整本下载章节与插图，断网后从本地缓存阅读
+- 本地书库：导入自己合法拥有的 TXT / Markdown / EPUB / PDF，支持分章、封面和下载到手机
+- 公共领域资源目录：列出 Gutenberg、青空文库、维基文库、DOAB 等合法来源
 - 离线书架：查看占用空间、删除单本下载
 - 本地搜索：只搜索已经下载到这台设备的书籍
 - 本地阅读统计、深浅外观、iOS 安全区适配
@@ -60,7 +62,7 @@ HTTP 适合快速调试；iPhone 上要注册 Service Worker、下载书籍和�
 首次使用或局域网 IP 变化后，生成证书：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\make-cert.ps1 -Ip 10.15.72.190
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\make-cert.ps1 -Ip 10.15.31.70
 ```
 
 `-Ip` 省略时会自动选择一个局域网 IPv4 地址。脚本会生成：
@@ -114,7 +116,35 @@ iPhone 安装 CA：
 - 下载书籍使用独立的 `wk8-offline-book-<id>` 缓存，不受普通浏览缓存 160 条上限影响。
 - 下载成功后才写入 `localStorage['wk8.downloads.v1']`；如果章节下载失败，会删除该书未完成的缓存。
 - 删除下载可在“离线书架”或书籍详情页操作；书架收藏、阅读进度和搜索历史不会被删除。
-- 本地搜索只覆盖已下载书籍的书名、作者和分类。
+- 本地搜索覆盖官网已下载书籍与已下载本地书的书名、作者和分类。
+
+## 本地书库
+
+把文件放进项目根目录的 `library/`，在「本地」页点击刷新即可导入。子目录会递归扫描。
+
+支持：
+
+- `.txt`（自动识别 UTF-8 / UTF-16 / GB18030）
+- `.md` / `.markdown`（支持 `# 标题` 分章）
+- `.epub`（读取 OPF 书脊、目录标题和封面）
+- `.pdf`（只在系统 PDF 查看器中打开，不进入网页离线缓存）
+
+TXT/Markdown 会按「第一章」「Chapter 1」等标题分章；没有标题时按长度分段。文件名可用 `书名 - 作者.txt` 的格式，导入后会用作书名和作者。
+
+本地文件只在本机使用：
+
+- `library/` 已被 `.gitignore` 忽略，不会提交到仓库。
+- 服务端不会把文件上传到公网；网页只在同源请求中读取。
+- 手机端仍需在书籍详情页点击「下载到手机」，才能断网阅读。
+- 只放你合法拥有的文件，或公共领域/开放许可内容。不要导入或分发盗版小说、漫画、扫描书。
+
+`resources/catalog.json` 列出了可合法获取内容的来源与许可提示；`resources/samples/` 提供了一个公共领域示例。示例会出现在本地书库的「公共领域示例」分类中。
+
+```bash
+npm run library
+```
+
+该命令会扫描并打印导入结果，适合在启动前检查文件错误。
 
 ## Windows 自启
 
@@ -159,8 +189,14 @@ VBS 中写入了当前机器的 Node 路径；如果更换 Node 安装位置，�
 | GET | `/api/book/:id` | 书籍详情与目录 |
 | GET | `/api/chapter/:bookId/:chapterId` | 章节正文 |
 | GET | `/api/image?src=` | 官网图片代理，仅允许 wenku8.com / wenku8.net / 777743.xyz |
+| GET | `/api/library` | 本地书库索引 |
+| POST | `/api/library/refresh` | 重新扫描 `library/` 与 `resources/samples/` |
+| GET | `/api/library/:id` | 本地书籍详情与目录 |
+| GET | `/api/library/:id/chapter/:chapterId` | 本地章节正文 |
+| GET | `/api/library/:id/cover` | 本地封面 |
+| GET | `/api/library/:id/file` | 原始文件（支持 Range，主要用于 PDF） |
 
-离线下载没有服务端接口；浏览器直接读取上述响应并写入本地 Cache Storage。
+官网书籍的离线下载没有服务端接口；浏览器直接读取上述响应并写入本地 Cache Storage。本地书库下载同样由浏览器写入独立的 Cache Storage。
 
 ## 目录结构
 
@@ -169,10 +205,16 @@ wenku8-web/
 ├─ server.js               HTTP/HTTPS 服务、API 与静态文件
 ├─ lib/
 │  ├─ http.js              上游 HTTPS 请求、GBK 解码、Cookie
+│  ├─ library.js           本地 TXT/Markdown/EPUB/PDF 扫描与解析
 │  ├─ parse.js             官网 HTML 解析
 │  └─ site.js              站点抓取、缓存与图片代理
+├─ library/                自己的本地书籍（内容被 .gitignore 忽略）
+├─ resources/
+│  ├─ catalog.json         公共领域/开放获取来源与许可提示
+│  └─ samples/             可提交的公共领域示例
 ├─ certs/                  本地 CA 与服务端证书（已被 .gitignore 忽略）
 ├─ scripts/
+│  ├─ import-library.js    扫描本地书库并打印结果
 │  ├─ start.js             健康检查 + 后台启动
 │  └─ start-hidden.vbs     Windows 登录自启入口
 ├─ public/
@@ -184,9 +226,10 @@ wenku8-web/
 │  ├─ icons/
 │  └─ js/
 │     ├─ core.js           工具、存储、API、格式化
+│     ├─ library.js        本地书库索引、下载和缓存读取
 │     ├─ offline.js        离线下载、缓存读取、本地搜索
 │     ├─ ui.js             通用组件、弹层、提示
-│     ├─ pages.js          首页、书架、搜索、书页等
+│     ├─ pages.js          首页、本地书库、书架、搜索、书页等
 │     ├─ reader.js         阅读器与阅读设置
 │     └─ main.js           路由与事件绑定
 ├─ tools/                  证书/图标生成、冒烟测试
@@ -197,9 +240,10 @@ wenku8-web/
 
 - 服务端首页缓存 10 分钟，年度精选 24 小时，书籍 30 分钟，章节 12 小时。
 - 官网冷请求可能耗时数十秒；同一条目再次访问会命中内存缓存。
-- 前端静态资源使用 ETag 校验；Service Worker 用 `wk8-shell-v10` 缓存应用外壳。
-- 普通访问过的首页、年度精选、书籍、章节和图片会写入 `wk8-content-v1`，最多保留 160 条；离线时优先读缓存，联网时后台更新。
-- 已下载书籍使用独立的 `wk8-offline-book-<id>` 缓存，Service Worker 会优先匹配这些缓存，并在升级时保留它们。
+- 前端静态资源使用 ETag 校验；Service Worker 用 `wk8-shell-v12` 缓存应用外壳。
+- 普通访问过的首页、年度精选、官网书籍、章节和图片会写入 `wk8-content-v1`，最多保留 160 条；离线时优先读缓存，联网时后台更新。
+- 本地书库接口不写入普通内容缓存，避免文件更新后读到旧章节；已下载副本单独存放。
+- 已下载官网书籍使用独立的 `wk8-offline-book-<id>` 缓存，已下载本地书籍使用 `wk8-library-book-<id>`；Service Worker 会优先匹配这些缓存，并在升级时保留它们。
 - 修改前端静态资源后，请同步修改 `public/sw.js` 的 `CACHE`；如果接口结构变化，同时修改 `CONTENT_CACHE` 版本。
 
 ## 常见问题
@@ -228,6 +272,14 @@ wenku8-web/
 
 iOS 可能保留旧 Service Worker 缓存。关闭并从主屏幕删除应用后重新添加，或在 Safari 网站数据中清除该站点数据。修改前端资源后也应提升 `public/sw.js` 的 `CACHE` 版本。
 
+**本地书库为空或文件没有导入**
+
+确认文件位于项目根目录的 `library/` 下，扩展名为 `.txt`、`.md`、`.markdown`、`.epub` 或 `.pdf`，单文件不超过 80 MB。点击「本地」页右上角刷新，或运行 `npm run library` 查看具体错误。PDF 只会在系统查看器中打开，不提供网页分章阅读。
+
+**本地书下载后断网打不开**
+
+本地书也需要在详情页点击「下载到手机」。下载完成后，阅读器会从 `wk8-library-book-<id>` 缓存读取；如果只把文件放进 `library/` 而没有下载，手机断网后无法访问电脑上的源文件。
+
 **插图加载慢或失败**
 
 官网插图由第三方图床提供，可能出现限速或暂时不可用。阅读器会隐藏加载失败的图片，不影响文字阅读；下载时会跳过失败插图，删除该书下载后可重新尝试。
@@ -238,7 +290,7 @@ iOS 可能保留旧 Service Worker 缓存。关闭并从主屏幕删除应用后
 
 ## 免责声明
 
-本项目为非官方个人学习项目，与轻小说文库及任何出版社、作者无关。服务端不存储小说正文，内容实时取自官网；下载内容仅保存在用户自己的设备上，用于个人离线阅读。版权归原作者、出版社与官网所有，请勿公开传播、抓取或用于商业用途。官网随时可能关闭或变更接口，本项目不保证持续可用，亦不提供任何担保。
+本项目为非官方个人学习项目，与轻小说文库及任何出版社、作者无关。服务端不存储小说正文，内容实时取自官网；下载内容仅保存在用户自己的设备上，用于个人离线阅读。版权归原作者、出版社与官网所有，请勿公开传播、抓取或用于商业用途。本地书库只处理用户自己提供或合法获取的文件，项目不附带受版权保护的书籍、漫画或扫描件。官网随时可能关闭或变更接口，本项目不保证持续可用，亦不提供任何担保。
 
 ## 开发提示
 
@@ -248,9 +300,11 @@ iOS 可能保留旧 Service Worker 缓存。关闭并从主屏幕删除应用后
 ```bash
 node --check server.js
 node --check lib/http.js
+node --check lib/library.js
 node --check lib/site.js
 node --check public/sw.js
 node --check public/js/core.js
+node --check public/js/library.js
 node --check public/js/offline.js
 node --check public/js/ui.js
 node --check public/js/pages.js

@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const site = require('./lib/site');
+const library = require('./lib/library');
 
 const PORT = Number(process.env.PORT) || 8787;
 const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 8443;
@@ -27,6 +28,8 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.cer': 'application/x-x509-ca-cert',
   '.txt': 'text/plain; charset=utf-8',
+  '.epub': 'application/epub+zip',
+  '.pdf': 'application/pdf',
   '.woff2': 'font/woff2',
 };
 
@@ -46,6 +49,66 @@ function sendError(res, error) {
     error: error.message || '服务器错误',
     authRequired: Boolean(error.authRequired),
   });
+}
+
+function sendLibraryFile(req, res, id) {
+  const file = library.getFile(id);
+  if (!file) {
+    sendJson(res, 404, { error: '本地书籍不存在' });
+    return;
+  }
+  let stat;
+  try {
+    stat = fs.statSync(file.path);
+  } catch {
+    sendJson(res, 404, { error: '源文件不存在' });
+    return;
+  }
+  const total = stat.size;
+  const contentTypes = {
+    pdf: 'application/pdf',
+    epub: 'application/epub+zip',
+    md: 'text/markdown; charset=utf-8',
+    markdown: 'text/markdown; charset=utf-8',
+    txt: 'text/plain; charset=utf-8',
+  };
+  const contentType = contentTypes[file.format] || 'application/octet-stream';
+  const name = path.basename(file.path);
+  const asciiName = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  let start = 0;
+  let end = total - 1;
+  let status = 200;
+  const range = String(req.headers.range || '');
+  const rangeMatch = range.match(/^bytes=(\d+)-(\d*)$/);
+  const suffixMatch = range.match(/^bytes=-(\d+)$/);
+  if (rangeMatch) {
+    start = Number(rangeMatch[1]);
+    end = rangeMatch[2] ? Math.min(Number(rangeMatch[2]), total - 1) : total - 1;
+    status = 206;
+  } else if (suffixMatch) {
+    start = Math.max(0, total - Number(suffixMatch[1]));
+    status = 206;
+  }
+  if (start >= total || start > end) {
+    res.writeHead(416, { 'Content-Range': `bytes */${total}` });
+    res.end();
+    return;
+  }
+  const headers = {
+    'Content-Type': contentType,
+    'Content-Length': end - start + 1,
+    'Content-Disposition': `inline; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${total}`;
+  res.writeHead(status, headers);
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  fs.createReadStream(file.path, { start, end }).pipe(res);
 }
 
 function serveStatic(req, res, pathname) {
@@ -91,6 +154,23 @@ function serveStatic(req, res, pathname) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+let libraryReady = null;
+
+function ensureLibrary() {
+  if (!libraryReady) {
+    libraryReady = library.refresh()
+      .then((data) => {
+        console.log(`[library] ${data.books.length} 本，${data.errors.length} 个错误`);
+        return data;
+      })
+      .catch((error) => {
+        console.error(`[library] 扫描失败: ${error.stack || error.message}`);
+        return null;
+      });
+  }
+  return libraryReady;
+}
+
 async function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
   const started = Date.now();
@@ -98,6 +178,60 @@ async function handleApi(req, res, url) {
   try {
     if (req.method === 'GET' && pathname === '/api/health') {
       return sendJson(res, 200, { ok: true, time: Date.now(), uptime: process.uptime() });
+    }
+
+    if (req.method === 'GET' && pathname === '/api/library') {
+      await ensureLibrary();
+      return sendJson(res, 200, library.payload());
+    }
+
+    if (req.method === 'POST' && pathname === '/api/library/refresh') {
+      return sendJson(res, 200, await library.refresh());
+    }
+
+    const libraryFileMatch = pathname.match(/^\/api\/library\/([a-z0-9]+)\/file$/);
+    if ((req.method === 'GET' || req.method === 'HEAD') && libraryFileMatch) {
+      await ensureLibrary();
+      return sendLibraryFile(req, res, libraryFileMatch[1]);
+    }
+
+    const libraryCoverMatch = pathname.match(/^\/api\/library\/([a-z0-9]+)\/cover$/);
+    if (req.method === 'GET' && libraryCoverMatch) {
+      await ensureLibrary();
+      const cover = library.getCover(libraryCoverMatch[1]);
+      if (!cover) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Not found');
+      }
+      res.writeHead(200, {
+        'Content-Type': cover.contentType,
+        'Content-Length': cover.buffer.length,
+        'Cache-Control': 'public, max-age=86400',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      return res.end(cover.buffer);
+    }
+
+    const libraryChapterMatch = pathname.match(/^\/api\/library\/([a-z0-9]+)\/chapter\/([a-z0-9]+)$/);
+    if (req.method === 'GET' && libraryChapterMatch) {
+      await ensureLibrary();
+      const chapter = library.getChapter(libraryChapterMatch[1], libraryChapterMatch[2]);
+      if (!chapter) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: '章节不存在' }));
+      }
+      return sendJson(res, 200, chapter);
+    }
+
+    const libraryBookMatch = pathname.match(/^\/api\/library\/([a-z0-9]+)$/);
+    if (req.method === 'GET' && libraryBookMatch) {
+      await ensureLibrary();
+      const book = library.getBook(libraryBookMatch[1]);
+      if (!book) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: '本地书籍不存在' }));
+      }
+      return sendJson(res, 200, book);
     }
 
     if (req.method === 'GET' && pathname === '/api/home') {
@@ -211,6 +345,7 @@ server.listen(PORT, HOST, () => {
   for (const ip of addresses) console.log(`  手机: http://${ip}:${PORT}`);
   console.log('');
   console.log('  手机与电脑需在同一 Wi-Fi。按 Ctrl+C 停止。');
+  ensureLibrary();
   warmCache();
 
   console.log('');

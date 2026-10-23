@@ -45,6 +45,11 @@
     if (name === 'search') return { name, render: (ctx, query) => WK.pages.search(ctx, query), reader: false };
     if (name === 'sugoi') return { name, render: (ctx) => WK.pages.sugoi(ctx, id), reader: false };
     if (name === 'offline') return { name, render: (ctx) => WK.pages.offline(ctx), reader: false };
+    if (name === 'library' && id && segments[2] === 'read' && segments[3]) {
+      return { name, render: (ctx) => WK.pages.libraryReader(ctx, id, segments[3]), reader: true };
+    }
+    if (name === 'library' && id) return { name, render: (ctx) => WK.pages.libraryBook(ctx, id), reader: false };
+    if (name === 'library') return { name, render: (ctx) => WK.pages.library(ctx), reader: false };
     if (name === 'book' && id) return { name, render: (ctx) => WK.pages.book(ctx, id), reader: false };
     if (name === 'read' && id && segments[2]) {
       return { name, render: (ctx) => WK.pages.reader(ctx, id, segments[2]), reader: true };
@@ -163,6 +168,64 @@
     }
   }
 
+  async function startLibraryDownload(id, button) {
+    if (!window.isSecureContext) {
+      toast('离线下载需要 HTTPS 访问');
+      return;
+    }
+    if (!('caches' in window)) {
+      toast('当前浏览器不支持离线存储');
+      return;
+    }
+    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+      toast('页面缓存尚未激活，刷新后再下载');
+      return;
+    }
+    if (button) button.disabled = true;
+    const progress = $('#library-progress');
+    try {
+      const book = await WK.library.loadBook(id);
+      const meta = await WK.library.download(book, (info) => updateDownloadProgress(progress, info));
+      toast(`《${meta.title}》已下载到手机`, 2800);
+      WK.rerender();
+    } catch (error) {
+      toast(error.message || '下载失败，请稍后重试', 3200);
+      if (progress) progress.hidden = true;
+    } finally {
+      if (button && button.isConnected) button.disabled = false;
+    }
+  }
+
+  function confirmLibraryRemove(id) {
+    const item = WK.library.getDownload(id);
+    if (!item) {
+      toast('没有找到这个本地下载');
+      return;
+    }
+    WK.openConfirmSheet({
+      title: '删除本地下载',
+      message: `删除《${item.title || '未命名'}》在手机上的离线副本？电脑上的源文件不会被删除。`,
+      confirmLabel: '删除下载',
+      onConfirm: async () => {
+        await WK.library.remove(id);
+        WK.sheet.close(true);
+        toast('已删除本地离线副本');
+        WK.rerender();
+      },
+    });
+  }
+
+  async function refreshLibrary() {
+    toast('正在扫描本地书库…');
+    try {
+      const data = await WK.library.fetchIndex({ refresh: true });
+      toast(`已扫描 ${data.books.length} 本本地书籍`, 2800);
+      WK.rerender();
+    } catch (error) {
+      toast(error.message || '扫描失败', 3200);
+    }
+  }
+
   function confirmRemoveDownload(id) {
     const meta = WK.offline.get(id);
     if (!meta) {
@@ -195,6 +258,18 @@
     }
     if (action === 'download-book') {
       startDownload(element.dataset.id, element);
+      return;
+    }
+    if (action === 'library-download') {
+      startLibraryDownload(element.dataset.id, element);
+      return;
+    }
+    if (action === 'library-remove') {
+      confirmLibraryRemove(element.dataset.id);
+      return;
+    }
+    if (action === 'library-refresh') {
+      refreshLibrary();
       return;
     }
     if (action === 'download-manage' || action === 'offline-remove') {

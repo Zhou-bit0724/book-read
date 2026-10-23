@@ -16,49 +16,68 @@
     return `<a href="${href}">${icon(iconName)}<span>${label}</span></a>`;
   }
 
-  function navHtml(bookId, chapter) {
+  function navHtml(base, chapter) {
     const prev = chapter.prev
-      ? navButton('上一章', 'arrowLeft', `#/read/${bookId}/${chapter.prev}`, false)
+      ? navButton('上一章', 'arrowLeft', `${base}/${chapter.prev}`, false)
       : navButton('上一章', 'arrowLeft', '#', true);
     const next = chapter.next
-      ? navButton('下一章', 'arrowRight', `#/read/${bookId}/${chapter.next}`, false)
+      ? navButton('下一章', 'arrowRight', `${base}/${chapter.next}`, false)
       : navButton('下一章', 'arrowRight', '#', true);
     return `${prev}<button class="chapter-jump" type="button" data-action="open-toc">${icon('list')}<span>目录</span></button><span class="reader-progress-text" id="reader-pos"></span>${next}`;
   }
 
-  function shell(bookId, bookTitle, chapterTitle) {
-    return `<div class="reader-page" id="reader-page"><div class="reader-progress" id="reader-progress"></div><header class="reader-top"><a class="icon-btn" href="#/book/${bookId}" aria-label="返回书籍">${icon('back')}</a><div class="reader-head-title"><strong id="reader-book-title">${esc(bookTitle)}</strong><span id="reader-chapter-title">${esc(chapterTitle)}</span></div><button class="icon-btn" type="button" data-action="open-toc" aria-label="目录">${icon('list')}</button><button class="icon-btn" type="button" data-action="reader-settings" aria-label="阅读设置">${icon('settings')}</button></header><main class="reader-content" id="reader-content"><div class="reader-loading"><div class="skeleton-line title"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></main><footer class="reader-bottom"><div class="reader-nav" id="reader-nav"><button class="nav-disabled" type="button" disabled>${icon('arrowLeft')}<span>上一章</span></button><button class="chapter-jump" type="button" data-action="open-toc">${icon('list')}<span>目录</span></button><span class="reader-progress-text"></span><button class="nav-disabled" type="button" disabled>${icon('arrowRight')}<span>下一章</span></button></div></footer></div>`;
+  function shell(backHref, bookTitle, chapterTitle) {
+    return `<div class="reader-page" id="reader-page"><div class="reader-progress" id="reader-progress"></div><header class="reader-top"><a class="icon-btn" href="${esc(backHref)}" aria-label="返回书籍">${icon('back')}</a><div class="reader-head-title"><strong id="reader-book-title">${esc(bookTitle)}</strong><span id="reader-chapter-title">${esc(chapterTitle)}</span></div><button class="icon-btn" type="button" data-action="open-toc" aria-label="目录">${icon('list')}</button><button class="icon-btn" type="button" data-action="reader-settings" aria-label="阅读设置">${icon('settings')}</button></header><main class="reader-content" id="reader-content"><div class="reader-loading"><div class="skeleton-line title"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></main><footer class="reader-bottom"><div class="reader-nav" id="reader-nav"><button class="nav-disabled" type="button" disabled>${icon('arrowLeft')}<span>上一章</span></button><button class="chapter-jump" type="button" data-action="open-toc">${icon('list')}<span>目录</span></button><span class="reader-progress-text"></span><button class="nav-disabled" type="button" disabled>${icon('arrowRight')}<span>下一章</span></button></div></footer></div>`;
   }
 
   async function pageReader(ctx, bookId, cid) {
-    const id = Number(bookId);
-    const chapterId = Number(cid);
+    return pageReaderFor('wenku8', ctx, bookId, cid);
+  }
+
+  async function pageLibraryReader(ctx, bookId, cid) {
+    return pageReaderFor('library', ctx, bookId, cid);
+  }
+
+  async function pageReaderFor(source, ctx, bookId, cid) {
+    const isLibrary = source === 'library';
+    const id = isLibrary ? String(bookId) : Number(bookId);
+    const chapterId = String(cid);
     const app = $('#app');
     const known = state.books.get(String(id));
     const previous = store.history[id];
     const shellTitle = (known && known.title) || (previous && previous.title) || '阅读';
+    const backHref = isLibrary ? `#/library/${encodeURIComponent(bookId)}` : `#/book/${id}`;
     WK.setTitle('阅读');
-    app.innerHTML = shell(id, shellTitle, '');
+    app.innerHTML = shell(backHref, shellTitle, '');
     applyReaderSettings();
     const content = $('#reader-content');
+    const chapterPath = isLibrary
+      ? `/api/library/${encodeURIComponent(bookId)}/chapter/${encodeURIComponent(chapterId)}`
+      : `/api/chapter/${id}/${chapterId}`;
     let chapter;
     try {
-      chapter = await api(`/api/chapter/${id}/${chapterId}`);
+      chapter = await api(chapterPath);
     } catch (error) {
-      chapter = await WK.offline.loadChapter(id, chapterId);
+      chapter = isLibrary
+        ? await WK.library.loadCachedChapter(bookId, chapterId)
+        : await WK.offline.loadChapter(id, chapterId);
       if (!ctx.alive()) return;
       if (!chapter) {
-        showError(content, id, error);
+        showError(content, bookId, error, source);
         return;
       }
     }
     if (!ctx.alive()) return;
-    const localBook = known || await WK.offline.loadBook(id);
+    const localBook = isLibrary
+      ? known || await WK.library.loadCachedBook(bookId)
+      : known || await WK.offline.loadBook(id);
     if (!ctx.alive()) return;
-    mountChapter(ctx, id, chapterId, chapter, localBook || null);
-    loadBook(id)
+    mountChapter(ctx, id, chapterId, chapter, localBook || null, source);
+    const fullBook = isLibrary ? WK.library.loadBook(bookId) : loadBook(id);
+    fullBook
       .then((data) => {
         if (!ctx.alive() || !activeSession || activeSession.cid !== chapterId) return null;
+        state.books.set(String(id), data);
         activeSession.book = data;
         updateMeta(data);
         return data;
@@ -66,7 +85,11 @@
       .catch(() => null);
   }
 
-  function mountChapter(ctx, bookId, chapterId, chapter, book) {
+  function sameChapterId(a, b, source) {
+    return source === 'library' ? String(a) === String(b) : Number(a) === Number(b);
+  }
+
+  function mountChapter(ctx, bookId, chapterId, chapter, book, source = 'wenku8') {
     const content = $('#reader-content');
     const readerPage = $('#reader-page');
     const chapterTitle = $('#reader-chapter-title');
@@ -75,12 +98,15 @@
     if (bookTitle) bookTitle.textContent = (book && book.title) || chapter.bookTitle || '阅读';
     WK.setTitle((book && book.title) || chapter.bookTitle || '阅读');
 
-    const index = book ? book.chapters.findIndex((item) => Number(item.id) === Number(chapterId)) : -1;
+    const index = book ? book.chapters.findIndex((item) => sameChapterId(item.id, chapterId, source)) : -1;
     const total = book ? Number(book.chapterCount) || book.chapters.length : 0;
+    const baseRead = source === 'library'
+      ? `#/library/${encodeURIComponent(bookId)}/read`
+      : `#/read/${bookId}`;
     content.innerHTML = `<h1 class="chapter-title">${esc(chapter.title || '')}</h1>${chapter.content || '<p class="chapter-end">本章暂无内容。</p>'}<div class="chapter-end">本章完</div>`;
 
     const nav = $('#reader-nav');
-    if (nav) nav.innerHTML = navHtml(bookId, chapter);
+    if (nav) nav.innerHTML = navHtml(baseRead, chapter);
 
     activeSession = {
       bookId,
@@ -90,6 +116,8 @@
       index,
       total,
       ratio: 0,
+      source,
+      baseRead,
     };
     state.reader = activeSession;
     updatePos();
@@ -98,7 +126,7 @@
     let restore = state.scroll.get(key);
     if (restore == null) {
       const history = store.history[bookId];
-      if (history && Number(history.chapterId) === Number(chapterId) && Number(history.scroll) > 0) {
+      if (history && sameChapterId(history.chapterId, chapterId, source) && Number(history.scroll) > 0) {
         restore = Number(history.scroll);
       }
     }
@@ -180,10 +208,12 @@
 
     function onKey(event) {
       if (state.sheetOpen || WK.isLightboxOpen()) return;
+      const current = activeSession;
+      const base = current ? current.baseRead : `#/read/${bookId}`;
       if (event.key === 'ArrowRight' && chapter.next) {
-        WK.navigate(`#/read/${bookId}/${chapter.next}`);
+        WK.navigate(`${base}/${chapter.next}`);
       } else if (event.key === 'ArrowLeft' && chapter.prev) {
-        WK.navigate(`#/read/${bookId}/${chapter.prev}`);
+        WK.navigate(`${base}/${chapter.prev}`);
       }
     }
 
@@ -201,7 +231,10 @@
 
     if (chapter.next) {
       const prefetch = setTimeout(() => {
-        fetch(`/api/chapter/${bookId}/${chapter.next}`).catch(() => {});
+        const path = source === 'library'
+          ? `/api/library/${encodeURIComponent(bookId)}/chapter/${encodeURIComponent(chapter.next)}`
+          : `/api/chapter/${bookId}/${chapter.next}`;
+        fetch(path).catch(() => {});
       }, 1600);
       onCleanup(() => clearTimeout(prefetch));
     }
@@ -237,7 +270,7 @@
     if (title) title.textContent = book.title || '阅读';
     const chapterTitle = $('#reader-chapter-title');
     if (chapterTitle && activeSession.chapter) chapterTitle.textContent = activeSession.chapter.title || '';
-    activeSession.index = book.chapters.findIndex((item) => Number(item.id) === Number(activeSession.cid));
+    activeSession.index = book.chapters.findIndex((item) => sameChapterId(item.id, activeSession.cid, activeSession.source));
     activeSession.total = Number(book.chapterCount) || book.chapters.length;
     updatePos();
     persistProgress(activeSession.ratio || 0);
@@ -276,6 +309,7 @@
       total,
       percent,
       scroll: safeRatio,
+      source: session.source || 'wenku8',
       updatedAt: Date.now(),
     };
     store.history[session.bookId] = item;
@@ -291,8 +325,11 @@
     }
   }
 
-  function showError(content, bookId, error) {
-    content.innerHTML = `<div class="reader-error"><p>${esc(error.message || '章节加载失败')}</p><div class="reader-error-actions"><button class="ghost-btn" type="button" data-action="retry">重试</button><a class="ghost-btn" href="#/book/${bookId}">返回书籍</a></div></div>`;
+  function showError(content, bookId, error, source = 'wenku8') {
+    const back = source === 'library'
+      ? `#/library/${encodeURIComponent(bookId)}`
+      : `#/book/${bookId}`;
+    content.innerHTML = `<div class="reader-error"><p>${esc(error.message || '章节加载失败')}</p><div class="reader-error-actions"><button class="ghost-btn" type="button" data-action="retry">重试</button><a class="ghost-btn" href="${esc(back)}">返回书籍</a></div></div>`;
   }
 
   async function openTocSheet() {
@@ -305,12 +342,16 @@
     if (!book) {
       toast('目录正在加载');
       try {
-        book = await loadBook(session.bookId);
+        book = session.source === 'library'
+          ? await WK.library.loadBook(session.bookId)
+          : await loadBook(session.bookId);
         if (!activeSession || activeSession.cid !== session.cid) return;
         activeSession.book = book;
         updateMeta(book);
       } catch (error) {
-        book = await WK.offline.loadBook(session.bookId);
+        book = session.source === 'library'
+          ? await WK.library.loadCachedBook(session.bookId)
+          : await WK.offline.loadBook(session.bookId);
         if (!book) {
           toast(error.message || '目录加载失败');
           return;
@@ -324,13 +365,17 @@
       return;
     }
     const currentCid = session.cid;
+    const source = session.source || 'wenku8';
+    const baseRead = session.baseRead || (source === 'library'
+      ? `#/library/${encodeURIComponent(session.bookId)}/read`
+      : `#/read/${session.bookId}`);
     const volumes = book.volumes && book.volumes.length
       ? book.volumes
       : [{ title: '正文', chapters: book.chapters }];
     const html = volumes.map((volume, index) => {
-      const hasCurrent = volume.chapters.some((chapter) => Number(chapter.id) === currentCid);
-      const open = hasCurrent || (index === 0 && !volumes.some((item) => item.chapters.some((chapter) => Number(chapter.id) === currentCid)));
-      return `<details class="volume" ${open ? 'open' : ''}><summary><span>${esc(volume.title || '正文')}</span><span class="vol-count">${volume.chapters.length} 章</span>${icon('right')}</summary>${volume.chapters.map((chapter) => `<a class="chapter-row ${Number(chapter.id) === currentCid ? 'current' : ''}" href="#/read/${session.bookId}/${chapter.id}"><span class="chapter-index">${String((Number(chapter.index) || 0) + 1).padStart(3, '0')}</span><span class="chapter-name">${esc(chapter.title)}</span></a>`).join('')}</details>`;
+      const hasCurrent = volume.chapters.some((chapter) => sameChapterId(chapter.id, currentCid, source));
+      const open = hasCurrent || (index === 0 && !volumes.some((item) => item.chapters.some((chapter) => sameChapterId(chapter.id, currentCid, source))));
+      return `<details class="volume" ${open ? 'open' : ''}><summary><span>${esc(volume.title || '正文')}</span><span class="vol-count">${volume.chapters.length} 章</span>${icon('right')}</summary>${volume.chapters.map((chapter) => `<a class="chapter-row ${sameChapterId(chapter.id, currentCid, source) ? 'current' : ''}" href="${baseRead}/${encodeURIComponent(chapter.id)}"><span class="chapter-index">${String((Number(chapter.index) || 0) + 1).padStart(3, '0')}</span><span class="chapter-name">${esc(chapter.title)}</span></a>`).join('')}</details>`;
     }).join('');
     WK.sheet.open({
       title: `目录 · ${book.chapterCount || book.chapters.length} 章`,
@@ -345,5 +390,6 @@
 
   WK.pages = WK.pages || {};
   WK.pages.reader = pageReader;
+  WK.pages.libraryReader = pageLibraryReader;
   WK.openTocSheet = openTocSheet;
 })();

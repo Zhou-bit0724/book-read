@@ -74,7 +74,12 @@
     const offlineHtml = downloads.length
       ? `<section class="section">${sectionHead('离线书架', '#/offline', '管理')}<div class="hscroll">${downloads.slice(0, 8).map((item) => bookCard(item)).join('')}</div></section>`
       : '';
-    app.innerHTML = `<section class="hero"><div class="hero-row"><div><p class="eyebrow">轻小说 · 文库</p><h1>今晚，读点什么</h1><p>${esc(todayLabel())} · 可下载离线阅读</p></div><a class="icon-btn glass" href="#/me" aria-label="我的">${icon('user')}</a></div></section><button class="search-pill" type="button" data-action="open-search">${icon('search')}<span>搜索已下载书籍</span></button>${continueItem ? `<section class="section">${sectionHead('继续阅读')}${continueCard(continueItem)}</section>` : ''}${offlineHtml}${sectionHtml}${sugoiHtml}${footerNote()}${tabbar('home')}`;
+    const local = WK.library.cachedIndex().books
+      .filter((item) => navigator.onLine || WK.library.isDownloaded(item.id));
+    const localHtml = local.length
+      ? `<section class="section">${sectionHead('本地书库', '#/library', '全部')}<div class="hscroll">${local.slice(0, 8).map((item) => bookCard(item, { href: `#/library/${encodeURIComponent(item.id)}` })).join('')}</div></section>`
+      : '';
+    app.innerHTML = `<section class="hero"><div class="hero-row"><div><p class="eyebrow">轻小说 · 文库</p><h1>今晚，读点什么</h1><p>${esc(todayLabel())} · 可下载离线阅读</p></div><a class="icon-btn glass" href="#/me" aria-label="我的">${icon('user')}</a></div></section><button class="search-pill" type="button" data-action="open-search">${icon('search')}<span>搜索已下载书籍</span></button>${continueItem ? `<section class="section">${sectionHead('继续阅读')}${continueCard(continueItem)}</section>` : ''}${offlineHtml}${localHtml}${sectionHtml}${sugoiHtml}${footerNote()}${tabbar('home')}`;
   }
 
   function renderOfflineHome(app, notice) {
@@ -99,7 +104,10 @@
       ? `<div class="continue-bg" style="background-image:url('${esc(item.cover)}')"></div>`
       : '';
     const style = item.cover ? '' : ' style="background:linear-gradient(135deg,#46685a,#22362d)"';
-    return `<a class="continue-card" href="#/read/${encodeURIComponent(item.bookId)}/${encodeURIComponent(item.chapterId)}"${style}>${background}<div class="continue-body"><p class="eyebrow" style="color:#d7c49b">上次读到</p><h3>${esc(item.title || '未命名')}</h3><p>${esc(item.chapterTitle || '')}</p><div class="continue-progress"><div class="progress-track"><i style="width:${percent}%"></i></div><span>${percent}%</span></div><span class="continue-cta">接着上次读 ${icon('arrowRight')}</span></div></a>`;
+    const href = item.source === 'library'
+      ? `#/library/${encodeURIComponent(item.bookId)}/read/${encodeURIComponent(item.chapterId)}`
+      : `#/read/${encodeURIComponent(item.bookId)}/${encodeURIComponent(item.chapterId)}`;
+    return `<a class="continue-card" href="${href}"${style}>${background}<div class="continue-body"><p class="eyebrow" style="color:#d7c49b">上次读到</p><h3>${esc(item.title || '未命名')}</h3><p>${esc(item.chapterTitle || '')}</p><div class="continue-progress"><div class="progress-track"><i style="width:${percent}%"></i></div><span>${percent}%</span></div><span class="continue-cta">接着上次读 ${icon('arrowRight')}</span></div></a>`;
   }
 
   function pageShelf(ctx) {
@@ -142,7 +150,8 @@
     const app = $('#app');
     const readCount = Object.keys(store.read).length;
     const downloadCount = WK.offline.list().length;
-    app.innerHTML = `${topbar({ title: '我的', back: false, actions: `<button class="icon-btn" type="button" data-action="theme-sheet" aria-label="外观">${icon('sun')}</button>` })}<div class="me-card"><div class="avatar">本</div><div class="me-main"><h2>本地阅读</h2><p>无需登录 · 下载后断网可读</p></div></div><div class="stats"><div class="stat"><strong>${store.shelf.length}</strong><span>书架</span></div><div class="stat"><strong>${downloadCount}</strong><span>已下载</span></div><div class="stat"><strong>${readCount}</strong><span>已读章节</span></div></div><div class="settings-group">${settingRow({ iconName: 'text', label: '阅读偏好', value: `${readerThemeLabel()} · ${store.settings.fontSize}px`, action: 'reader-settings' })}${settingRow({ iconName: 'sun', label: '外观', value: themeLabel(), action: 'theme-sheet' })}${settingRow({ iconName: store.shelfView === 'grid' ? 'grid' : 'list', label: '书架布局', value: store.shelfView === 'grid' ? '网格' : '列表', action: 'toggle-shelf-view' })}</div><div class="settings-group">${settingRow({ iconName: 'download', label: '离线书架', value: `${downloadCount} 本`, href: '#/offline' })}${settingRow({ iconName: 'bookOpen', label: '年度精选', value: '轻厉榜单', href: '#/sugoi/2026' })}</div><div class="settings-group">${settingRow({ iconName: 'phone', label: '安装到主屏幕', value: 'PWA', action: 'install' })}${settingRow({ iconName: 'info', label: '关于与免责声明', action: 'about' })}${settingRow({ iconName: 'external', label: '访问官网', value: 'wenku8.net', href: 'https://www.wenku8.net', external: true })}</div>${footerNote('非官方客户端 · 本地离线版')}${tabbar('me')}`;
+    const libraryCount = WK.library.cachedIndex().books.length;
+    app.innerHTML = `${topbar({ title: '我的', back: false, actions: `<button class="icon-btn" type="button" data-action="theme-sheet" aria-label="外观">${icon('sun')}</button>` })}<div class="me-card"><div class="avatar">本</div><div class="me-main"><h2>本地阅读</h2><p>无需登录 · 下载后断网可读</p></div></div><div class="stats"><div class="stat"><strong>${store.shelf.length}</strong><span>书架</span></div><div class="stat"><strong>${downloadCount}</strong><span>已下载</span></div><div class="stat"><strong>${readCount}</strong><span>已读章节</span></div></div><div class="settings-group">${settingRow({ iconName: 'text', label: '阅读偏好', value: `${readerThemeLabel()} · ${store.settings.fontSize}px`, action: 'reader-settings' })}${settingRow({ iconName: 'sun', label: '外观', value: themeLabel(), action: 'theme-sheet' })}${settingRow({ iconName: store.shelfView === 'grid' ? 'grid' : 'list', label: '书架布局', value: store.shelfView === 'grid' ? '网格' : '列表', action: 'toggle-shelf-view' })}</div><div class="settings-group">${settingRow({ iconName: 'bookOpen', label: '本地书库', value: `${libraryCount} 本`, href: '#/library' })}${settingRow({ iconName: 'download', label: '离线书架', value: `${downloadCount} 本`, href: '#/offline' })}${settingRow({ iconName: 'bookOpen', label: '年度精选', value: '轻厉榜单', href: '#/sugoi/2026' })}</div><div class="settings-group">${settingRow({ iconName: 'phone', label: '安装到主屏幕', value: 'PWA', action: 'install' })}${settingRow({ iconName: 'info', label: '关于与免责声明', action: 'about' })}${settingRow({ iconName: 'external', label: '访问官网', value: 'wenku8.net', href: 'https://www.wenku8.net', external: true })}</div>${footerNote('非官方客户端 · 本地离线版')}${tabbar('me')}`;
   }
 
   async function pageOffline(ctx) {
@@ -158,6 +167,105 @@
     }
   }
 
+  function libraryGrouped(books) {
+    const groups = new Map();
+    for (const book of books) {
+      const key = book.category || '本地书库';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(book);
+    }
+    return [...groups.entries()].map(([title, items]) => `<section class="section"><div class="section-head"><h2>${esc(title)}</h2><span class="more">${items.length} 本</span></div><div class="grid-books">${items.map((book) => {
+      const downloaded = WK.library.isDownloaded(book.id);
+      const label = book.author || (book.format === 'pdf' ? 'PDF' : '本地文件');
+      return bookCard(book, {
+        href: `#/library/${encodeURIComponent(book.id)}`,
+        sub: downloaded ? `已下载 · ${label}` : label,
+      });
+    }).join('')}</div></section>`).join('');
+  }
+
+  function libraryIndexHtml(data, notice) {
+    const books = Array.isArray(data && data.books) ? data.books : [];
+    const errors = Array.isArray(data && data.errors) ? data.errors : [];
+    const errorHtml = errors.length
+      ? `<div class="offline-note">${icon('info')}<div><strong>${errors.length} 个文件未能导入</strong><p>${errors.slice(0, 3).map((item) => `${esc(item.file)}：${esc(item.error)}`).join('<br>')}</p></div></div>`
+      : '';
+    const noticeHtml = notice
+      ? `<div class="offline-note">${icon('cloudOff')}<div><strong>当前使用本地缓存目录</strong><p>${esc(notice)}</p></div></div>`
+      : '';
+    const body = books.length
+      ? libraryGrouped(books)
+      : emptyState({
+        iconName: 'bookOpen',
+        title: '本地书库还是空的',
+        text: '把合法拥有的 TXT、Markdown、EPUB 或 PDF 放到项目的 library/ 文件夹，然后点右上角刷新。文件只留在电脑上，不会提交到 Git。',
+      });
+    return `${topbar({ title: '本地书库', sub: `${books.length} 本`, actions: `<button class="icon-btn" type="button" data-action="library-refresh" aria-label="重新扫描">${icon('refresh')}</button>` })}<div class="offline-note">${icon('bookOpen')}<div><strong>你自己的书，只在这台设备</strong><p>支持 TXT / Markdown / EPUB / PDF；公共领域示例会随项目提供。</p></div></div>${noticeHtml}${errorHtml}${body}${footerNote('只扫描 library/ 与 resources/samples/。', { local: true })}${tabbar('library')}`;
+  }
+
+  async function pageLibrary(ctx) {
+    WK.setTitle('本地书库');
+    const app = $('#app');
+    const raw = WK.library.cachedIndex();
+    const offlineView = !navigator.onLine
+      ? { ...raw, books: raw.books.filter((book) => WK.library.isDownloaded(book.id)) }
+      : raw;
+    app.innerHTML = libraryIndexHtml(offlineView, navigator.onLine ? '' : '当前离线，只显示已经下载到手机的本地书。');
+    try {
+      const data = await WK.library.fetchIndex();
+      if (!ctx.alive()) return;
+      app.innerHTML = libraryIndexHtml(data);
+    } catch (error) {
+      if (!ctx.alive()) return;
+      app.innerHTML = libraryIndexHtml(offlineView, error.message || '无法连接本地服务');
+    }
+  }
+
+  async function pageLibraryBook(ctx, id) {
+    WK.setTitle('本地书籍');
+    const app = $('#app');
+    app.innerHTML = `${topbar({ title: '本地书籍' })}${skeletonBook()}`;
+    let book;
+    try {
+      book = await WK.library.loadBook(id);
+    } catch (error) {
+      if (!ctx.alive()) return;
+      app.innerHTML = `${topbar({ title: '本地书籍' })}${errorBox(error.message || '无法读取本地书籍')}${tabbar('library')}`;
+      return;
+    }
+    if (!ctx.alive() || !book) return;
+    state.books.set(String(book.id), book);
+    renderLibraryBook(app, book);
+  }
+
+  function renderLibraryBook(app, book) {
+    WK.setTitle(book.title || '本地书籍');
+    const first = book.firstChapter || (Array.isArray(book.chapters) ? book.chapters[0] : null);
+    const downloaded = WK.library.isDownloaded(book.id);
+    const format = String(book.format || '').toUpperCase();
+    const readButton = first
+      ? `<a class="primary-btn" href="#/library/${encodeURIComponent(book.id)}/read/${encodeURIComponent(first.id)}">${icon('bookOpen')}<span>开始阅读</span></a>`
+      : `<a class="primary-btn" href="/api/library/${encodeURIComponent(book.id)}/file" target="_blank" rel="noopener">${icon('external')}<span>打开 PDF</span></a>`;
+    const downloadButton = !first
+      ? ''
+      : downloaded
+        ? `<button class="ghost-btn" type="button" data-action="library-remove" data-id="${esc(book.id)}">${icon('download')}<span>已下载</span></button>`
+        : `<button class="ghost-btn" id="library-download" type="button" data-action="library-download" data-id="${esc(book.id)}">${icon('download')}<span>下载到手机</span></button>`;
+    const stats = [
+      format,
+      book.chapterCount ? `${book.chapterCount} 章` : '',
+      book.words ? formatWords(book.words) : '',
+      book.seed ? '随项目提供' : '本机导入',
+    ].filter(Boolean).map((item) => `<span>${esc(item)}</span>`).join('');
+    const description = book.description
+      ? `<div class="desc-card"><p>${esc(book.description)}</p></div>`
+      : '';
+    const toc = Array.isArray(book.chapters) && book.chapters.length
+      ? `<div class="section"><div class="toc-head"><h2>目录</h2><span>${book.chapters.length} 章</span></div><details class="volume" open><summary><span>正文</span><span class="vol-count">${book.chapters.length} 章</span>${icon('right')}</summary>${book.chapters.map((chapter, index) => `<a class="chapter-row" href="#/library/${encodeURIComponent(book.id)}/read/${encodeURIComponent(chapter.id)}"><span class="chapter-index">${String(index + 1).padStart(3, '0')}</span><span class="chapter-name">${esc(chapter.title)}</span></a>`).join('')}</details></div>`
+      : '';
+    app.innerHTML = `${topbar({ title: '本地书籍', actions: `<a class="icon-btn" href="#/library" aria-label="返回本地书库">${icon('list')}</a>` })}<div class="book-hero">${coverHtml(book)}<div class="hero-main"><h1>${esc(book.title || '未命名')}</h1><p class="author">${esc(book.author || '作者未知')}</p><div class="chips"><span class="chip accent">本地</span>${book.category ? `<span class="chip">${esc(book.category)}</span>` : ''}</div><div class="hero-stats">${stats}</div></div></div><div class="book-actions">${readButton}${downloadButton}</div><div id="library-progress" class="download-progress" hidden><div class="progress-track"><i></i></div><span></span></div>${description}${toc}${footerNote('', { local: true })}${tabbar('library')}`;
+  }
+
   function searchBar(query) {
     return `<form class="search-bar" data-form="search" role="search"><button class="icon-btn" type="button" data-action="back" aria-label="返回">${icon('back')}</button><div class="search-input-wrap">${icon('search')}<input name="q" type="search" value="${esc(query)}" placeholder="搜索书名或作者" enterkeyhint="search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">${query ? `<button class="icon-btn small" type="button" data-action="clear-search" aria-label="清空">${icon('close')}</button>` : ''}</div><button class="search-go" type="submit">搜索</button></form>`;
   }
@@ -169,13 +277,18 @@
     app.innerHTML = `<div class="search-page">${searchBar(query)}<div id="search-content"></div></div>`;
     const content = $('#search-content');
     const downloads = WK.offline.list();
+    const localDownloads = WK.library.downloadedList();
     if (!query) {
-      content.innerHTML = `<p class="search-hint">只搜索已下载到手机的书籍，共 ${downloads.length} 本。</p>${recentSearches()}`;
+      content.innerHTML = `<p class="search-hint">只搜索已下载到手机的书籍，共 ${downloads.length + localDownloads.length} 本。</p>${recentSearches()}`;
       return;
     }
     rememberSearch(query);
     const books = WK.offline.search(query);
-    content.innerHTML = `<div class="section" style="margin-top:20px"><div class="section-head"><h2>本地搜索结果</h2><span class="more">${books.length} 本</span></div>${books.length ? bookRows(books) : emptyState({ iconName: 'search', title: '没有找到这本书', text: '搜索范围是已下载书籍；联网时可回首页继续找书并下载。' })}</div>${recentSearches()}`;
+    const localBooks = WK.library.search(query);
+    const localHtml = localBooks.length
+      ? `<div class="section" style="margin-top:20px"><div class="section-head"><h2>本地书库</h2><span class="more">${localBooks.length} 本</span></div><div class="grid-books">${localBooks.map((book) => bookCard(book, { href: `#/library/${encodeURIComponent(book.id)}`, sub: book.author || '本地文件' })).join('')}</div></div>`
+      : '';
+    content.innerHTML = `<div class="section" style="margin-top:20px"><div class="section-head"><h2>本地搜索结果</h2><span class="more">${books.length} 本</span></div>${books.length ? bookRows(books) : emptyState({ iconName: 'search', title: '没有找到这本书', text: '搜索范围是已下载书籍；请先在官网书籍详情页下载整本，或把本地文件导入 library/ 后下载到手机。' })}</div>${localHtml}${recentSearches()}`;
   }
 
   function recentSearches() {
@@ -354,6 +467,8 @@
     search: pageSearch,
     sugoi: pageSugoi,
     offline: pageOffline,
+    library: pageLibrary,
+    libraryBook: pageLibraryBook,
     book: pageBook,
   };
   WK.toggleShelf = toggleShelf;

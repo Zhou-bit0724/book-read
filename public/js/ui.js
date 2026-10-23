@@ -22,7 +22,8 @@
     const rank = options.rank
       ? `<span class="rank-badge">${esc(options.rank)}</span>`
       : '';
-    return `<a class="book-card" href="#/book/${encodeURIComponent(book.id)}">${rank}${coverHtml(book)}<div class="book-meta-line">${esc(book.title || '未命名')}</div>${sub ? `<div class="book-sub">${esc(sub)}</div>` : ''}</a>`;
+    const href = options.href || `#/book/${encodeURIComponent(book.id)}`;
+    return `<a class="book-card" href="${esc(href)}">${rank}${coverHtml(book)}<div class="book-meta-line">${esc(book.title || '未命名')}</div>${sub ? `<div class="book-sub">${esc(sub)}</div>` : ''}</a>`;
   }
 
   function rankGrid(books, startRank = 1) {
@@ -56,6 +57,7 @@
   function tabbar(active) {
     const tabs = [
       ['home', '首页', 'home'],
+      ['library', '本地', 'bookOpen'],
       ['shelf', '书架', 'shelf'],
       ['me', '我的', 'user'],
     ];
@@ -78,8 +80,11 @@
     return `<div class="error-box"><div class="error-icon">${icon(options.iconName || 'cloudOff')}</div><h2>${esc(title)}</h2><p>${esc(message || '请稍后再试')}</p>${retry}</div>`;
   }
 
-  function footerNote(extra = '') {
-    return `<div class="footer-note">内容来自轻小说文库官网，仅供个人试阅。<br>非官方阅读器；服务端不存储书籍文件，下载仅供本机离线阅读。${extra ? `<br>${esc(extra)}` : ''}</div>`;
+  function footerNote(extra = '', options = {}) {
+    const base = options.local
+      ? '本地书库只读取本机文件，不会上传或分发。<br>请只导入自己合法拥有或公共领域/开放许可的内容。'
+      : '内容来自轻小说文库官网，仅供个人试阅。<br>非官方阅读器；服务端不存储书籍文件，下载仅供本机离线阅读。';
+    return `<div class="footer-note">${base}${extra ? `<br>${esc(extra)}` : ''}</div>`;
   }
 
   function skeletonHome() {

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "updated": "2026-10-23",
+  "notice": "下载或导入前请逐项确认许可。这里只列举允许合法获取的来源，不代表所有条目都可在任意国家自由使用。",
+  "sources": [
+    {
+      "id": "gutenberg",
+      "name": "Project Gutenberg",
+      "url": "https://www.gutenberg.org/",
+      "types": ["文学", "历史", "哲学"],
+      "formats": ["txt", "epub"],
+      "license": "多为美国公共领域；请按作品页面确认并在所在地法律允许范围内使用。",
+      "notes": "可按语言和主题浏览，下载 EPUB 后放入 library/。"
+    },
+    {
+      "id": "standardebooks",
+      "name": "Standard Ebooks",
+      "url": "https://standardebooks.org/",
+      "types": ["文学"],
+      "formats": ["epub"],
+      "license": "以美国公共领域作品为主；具体版本和编辑内容请查看作品页。",
+      "notes": "排版和元数据较完整，适合测试 EPUB 导入与封面解析。"
+    },
+    {
+      "id": "aozora",
+      "name": "青空文库",
+      "url": "https://www.aozora.gr.jp/",
+      "types": ["日本文学"],
+      "formats": ["txt"],
+      "license": "多数作品在日本已进入公共领域；译文、校注和个别作品权利状态不同，请逐一确认。",
+      "notes": "可下载青空文库格式 TXT；本项目会尝试识别 UTF-8 与日文编码。"
+    },
+    {
+      "id": "wikisource",
+      "name": "维基文库",
+      "url": "https://zh.wikisource.org/",
+      "types": ["古籍", "文学", "历史"],
+      "formats": ["txt", "html"],
+      "license": "公共领域文本或 CC BY-SA 等自由许可；以页面标注为准。",
+      "notes": "适合导入中国古典文学；请保留来源与许可信息。"
+    },
+    {
+      "id": "doab",
+      "name": "Directory of Open Access Books",
+      "url": "https://www.doabooks.org/",
+      "types": ["学术", "人文", "社会科学"],
+      "formats": ["pdf", "epub"],
+      "license": "开放获取，具体许可因书而异；以书籍页面为准。",
+      "notes": "PDF 由系统阅读器打开，不会进入网页离线缓存。"
+    },
+    {
+      "id": "openstax",
+      "name": "OpenStax",
+      "url": "https://openstax.org/",
+      "types": ["教材", "科学", "心理学"],
+      "formats": ["pdf", "epub"],
+      "license": "多数教材采用 CC BY 等开放许可；以教材页面为准。",
+      "notes": "适合心理学、经济学、自然科学等开放教材。"
+    },
+    {
+      "id": "arxiv",
+      "name": "arXiv",
+      "url": "https://arxiv.org/",
+      "types": ["论文", "数学", "物理", "计算机"],
+      "formats": ["pdf"],
+      "license": "作者选择的许可各不相同；请查看论文页面的 license 信息。",
+      "notes": "只下载明确允许再分发的论文；不要把论文批量打包进公开仓库。"
+    },
+    {
+      "id": "pmc",
+      "name": "PubMed Central",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/",
+      "types": ["医学", "生命科学", "心理学"],
+      "formats": ["pdf", "html"],
+      "license": "开放获取子集许可各异；请筛选 Open Access 并核对具体条款。",
+      "notes": "不要把受限文献转换为公开资源。"
+    },
+    {
+      "id": "internetarchive",
+      "name": "Internet Archive",
+      "url": "https://archive.org/",
+      "types": ["历史", "文学", "档案"],
+      "formats": ["txt", "pdf", "epub"],
+      "license": "权利状态因条目而异，包含公共领域、借阅和受限资料。",
+      "notes": "只下载明确标注公共领域或开放许可的条目。"
+    }
+  ]
+}

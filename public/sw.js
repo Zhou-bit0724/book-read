@@ -1,9 +1,10 @@
 'use strict';
 
-const CACHE = 'wk8-shell-v10';
+const CACHE = 'wk8-shell-v12';
 const CONTENT_CACHE = 'wk8-content-v1';
 const CONTENT_LIMIT = 160;
 const BOOK_CACHE_PREFIX = 'wk8-offline-book-';
+const LIBRARY_CACHE_PREFIX = 'wk8-library-book-';
 const ASSETS = [
   '/',
   '/index.html',
@@ -11,6 +12,7 @@ const ASSETS = [
   '/manifest.webmanifest',
   '/js/core.js',
   '/js/offline.js',
+  '/js/library.js',
   '/js/ui.js',
   '/js/pages.js',
   '/js/reader.js',
@@ -33,9 +35,22 @@ function isCacheableApi(url) {
   return (
     url.pathname === '/api/home' ||
     url.pathname === '/api/sugoi' ||
+    url.pathname === '/api/library' ||
     /^\/api\/book\/\d+$/.test(url.pathname) ||
     /^\/api\/chapter\/\d+\/\d+$/.test(url.pathname) ||
+    /^\/api\/library\/[a-z0-9]+$/.test(url.pathname) ||
+    /^\/api\/library\/[a-z0-9]+\/chapter\/[a-z0-9]+$/.test(url.pathname) ||
+    /^\/api\/library\/[a-z0-9]+\/cover$/.test(url.pathname) ||
     url.pathname === '/api/image'
+  );
+}
+
+function isLibraryApi(url) {
+  return (
+    url.pathname === '/api/library' ||
+    /^\/api\/library\/[a-z0-9]+$/.test(url.pathname) ||
+    /^\/api\/library\/[a-z0-9]+\/chapter\/[a-z0-9]+$/.test(url.pathname) ||
+    /^\/api\/library\/[a-z0-9]+\/cover$/.test(url.pathname)
   );
 }
 
@@ -63,7 +78,7 @@ function offlineResponse() {
 async function matchDownloaded(request) {
   const names = await caches.keys();
   for (const name of names) {
-    if (!name.startsWith(BOOK_CACHE_PREFIX)) continue;
+    if (!name.startsWith(BOOK_CACHE_PREFIX) && !name.startsWith(LIBRARY_CACHE_PREFIX)) continue;
     const cache = await caches.open(name);
     const hit = await cache.match(request);
     if (hit) return hit;
@@ -76,6 +91,13 @@ function handleApiRequest(event, request, url) {
   event.respondWith((async () => {
     const downloaded = await matchDownloaded(request);
     if (downloaded) return downloaded;
+    if (isLibraryApi(url)) {
+      try {
+        return await fetch(request);
+      } catch {
+        return offlineResponse();
+      }
+    }
     const cache = await caches.open(CONTENT_CACHE);
     const cached = await cache.match(request);
     const network = fetch(request)
@@ -95,7 +117,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys
-        .filter((key) => key !== CACHE && key !== CONTENT_CACHE && !key.startsWith(BOOK_CACHE_PREFIX))
+        .filter((key) => key !== CACHE && key !== CONTENT_CACHE && !key.startsWith(BOOK_CACHE_PREFIX) && !key.startsWith(LIBRARY_CACHE_PREFIX))
         .map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
